@@ -1,0 +1,23 @@
+version: '3.8'
+services:
+  jupyter:
+    container_name: img_to_3D_experimente
+    build: .  # This line tells Docker Compose to build an image from the Dockerfile in the current directory
+    ports:
+      - "8888:8888"
+      - "7860:7860"
+    volumes:
+      - pytorch_vol:/workspace
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=1
+    privileged: true
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+              device_ids: ["1"]
+
+volumes:
+  pytorch_vol:
