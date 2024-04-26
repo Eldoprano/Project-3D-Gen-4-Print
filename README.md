@@ -1,49 +1,27 @@
-# TripoSR <a href="https://huggingface.co/stabilityai/TripoSR"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Model_Card-Huggingface-orange"></a> <a href="https://huggingface.co/spaces/stabilityai/TripoSR"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Gradio%20Demo-Huggingface-orange"></a> <a href="https://huggingface.co/papers/2403.02151"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Paper-Huggingface-orange"></a> <a href="https://arxiv.org/abs/2403.02151"><img src="https://img.shields.io/badge/Arxiv-2403.02151-B31B1B.svg"></a> <a href="https://discord.gg/mvS9mCfMnQ"><img src="https://img.shields.io/badge/Discord-%235865F2.svg?logo=discord&logoColor=white"></a>
+# 3DGen4Print
+This project aims to provide a simple and fast way to generate printable 3D models from text prompts. 
 
-<div align="center">
-  <img src="figures/teaser800.gif" alt="Teaser Video">
-</div>
-
-This is the official codebase for **TripoSR**, a state-of-the-art open-source model for **fast** feedforward 3D reconstruction from a single image, collaboratively developed by [Tripo AI](https://www.tripo3d.ai/) and [Stability AI](https://stability.ai/).
-<br><br>
-Leveraging the principles of the [Large Reconstruction Model (LRM)](https://yiconghong.me/LRM/), TripoSR brings to the table key advancements that significantly boost both the speed and quality of 3D reconstruction. Our model is distinguished by its ability to rapidly process inputs, generating high-quality 3D models in less than 0.5 seconds on an NVIDIA A100 GPU. TripoSR has exhibited superior performance in both qualitative and quantitative evaluations, outperforming other open-source alternatives across multiple public datasets. The figures below illustrate visual comparisons and metrics showcasing TripoSR's performance relative to other leading models. Details about the model architecture, training process, and comparisons can be found in this [technical report](https://arxiv.org/abs/2403.02151).
-
-<!--
-<div align="center">
-  <img src="figures/comparison800.gif" alt="Teaser Video">
-</div>
--->
-<p align="center">
-    <img width="800" src="figures/visual_comparisons.jpg"/>
-</p>
-
-<p align="center">
-    <img width="450" src="figures/scatter-comparison.png"/>
-</p>
-
-
-The model is released under the MIT license, which includes the source code, pretrained models, and an interactive online demo. Our goal is to empower researchers, developers, and creatives to push the boundaries of what's possible in 3D generative AI and 3D content creation.
+For the time being it uses StableDiffusionXL-Turbo to generate images from text prompts and TripoSR to generate 3D models from images.
 
 ## Getting Started
 ### Installation
-- Python >= 3.8
-- Install CUDA if available
-- Install PyTorch according to your platform: [https://pytorch.org/get-started/locally/](https://pytorch.org/get-started/locally/) **[Please make sure that the locally-installed CUDA major version matches the PyTorch-shipped CUDA major version. For example if you have CUDA 11.x installed, make sure to install PyTorch compiled with CUDA 11.x.]**
-- Update setuptools by `pip install --upgrade setuptools`
-- Install other dependencies by `pip install -r requirements.txt`
+- Install Docker
+- Install CUDA 12.3 (We didn't test with other versions)
+- To build the container, run `docker-compose build` (It uses the GPU 0 by default, you can change it in the `docker-compose.yml` file)
+- (For now) To get Prusa Slicer inside the container download and extract https://github.com/prusa3d/PrusaSlicer/releases/download/version_2.7.4/PrusaSlicer-2.7.4+linux-x64-GTK2-202404050940.tar.bz2
+  
+  And add the folder to the path using `export PATH=$PATH:[/path/to/]PrusaSlicer-2.7.4+linux-x64-GTK2-202404050940`\
 
-### Manual Inference
+### Run the gradio app
+- Run `python3 gradio_app.py`
+
+### Manual TripoSR Inference
 ```sh
 python run.py examples/chair.png --output-dir output/
 ```
 This will save the reconstructed 3D model to `output/`. You can also specify more than one image path separated by spaces. The default options takes about **6GB VRAM** for a single image input.
 
 For detailed usage of this script, use `python run.py --help`.
-
-### Local Gradio App
-```sh
-python gradio_app.py
-```
 
 ## Troubleshooting
 > AttributeError: module 'torchmcubes_module' has no attribute 'mcubes_cuda'
