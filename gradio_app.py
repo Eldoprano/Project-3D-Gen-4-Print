@@ -44,11 +44,9 @@ tsr_model.to(device)
 rembg_session = rembg.new_session()
 
 
-def check_input(prompt, size):
-    if prompt is None:
+def check_input(prompt):
+    if prompt is None or prompt.strip() == "":
         raise gr.Error("Please write a prompt!")
-    if size is None:
-        raise gr.Error("Please specify the preferred model size!")
 
 def image_generation(text_input):
     text_input = "Professional 3d model of " + text_input + ", dramatic lighting, highly detailed, volumetric, cartoon"
@@ -84,8 +82,6 @@ def generate(image, mc_resolution, formats=["obj"]):
     return mesh_path.name
 
 def sliceObj(obj3D, size):
-
-    "--support-material-threshold 50 --support-material-style snug"
     if int(size) > 30:
         config_type = "./prusaConfig_big.ini"
     else: config_type = "./prusaConfig.ini"
@@ -119,9 +115,12 @@ with gr.Blocks(title="TripoSR") as interface:
                 placeholder="What do you want to generate in 3D?"
             )
             with gr.Row():
-                set_size = gr.Textbox(
-                    label="Set output model size",
-                    placeholder="Please enter the preferred output model size in mm"
+                set_size = gr.Slider(
+                    label="Set output model size in mm",
+                    minimum=15,
+                    maximum=360, # Maximum size is limited by the PrusaSlicerXL
+                    value=80,
+                    step=5
                 )
             
             with gr.Row():
@@ -133,7 +132,7 @@ with gr.Blocks(title="TripoSR") as interface:
                     elem_id="content_image",
                 )
                 processed_image = gr.Image(label="Processed Image", interactive=False)
-            with gr.Row():
+            with gr.Row(visible = False): # Hidden for now since it's not used
                 with gr.Group():
                     do_remove_background = gr.Checkbox(
                         label="Remove Background", value=True
@@ -164,6 +163,28 @@ with gr.Blocks(title="TripoSR") as interface:
             gr.Markdown("Note: The model shown here is flipped. Download to get correct results.")
             with gr.Row():
                 download = gr.File("./3dObj.bgcode")
+    
+    # When user presses enter on the Text input, we check it's content input 
+    #  and continue with the 3D pipeline
+    input_text.submit(fn=check_input, inputs=[input_text]).success(
+        fn=image_generation,
+        inputs=[input_text],
+        outputs=[input_image]
+    ).success(
+        fn=preprocess,
+        inputs=[input_image, do_remove_background, foreground_ratio],
+        outputs=[processed_image],
+    ).success(
+        fn=generate,
+        inputs=[processed_image, mc_resolution],
+        outputs=[output_model_obj],
+    ).success(
+        fn=sliceObj,
+        inputs=[output_model_obj, set_size],
+        outputs=[slicer_output]
+    ),
+
+
     submit.click(fn=check_input, inputs=[input_text, set_size]).success(
         fn=image_generation,
         inputs=[input_text],
