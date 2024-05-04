@@ -42,6 +42,7 @@ tsr_model.to(device)
 
 
 rembg_session = rembg.new_session()
+file_time_format = '%d%b%y_%H-%M'
 
 
 def check_input(prompt):
@@ -49,8 +50,13 @@ def check_input(prompt):
         raise gr.Error("Please write a prompt!")
 
 def image_generation(text_input):
-    text_input = "Professional 3d model of " + text_input + ", dramatic lighting, highly detailed, volumetric, cartoon"
-    return image_generation_model(prompt=text_input, num_inference_steps=4, guidance_scale=0.0).images[0]
+    mod_text_input = "Professional 3d model of " + text_input + ", dramatic lighting, highly detailed, volumetric, cartoon"
+    image = image_generation_model(prompt=mod_text_input, num_inference_steps=4, guidance_scale=0.0).images[0]
+
+    # Save image to the model_outputs folder
+    output_filename = f"{time.strftime(file_time_format)}_{text_input.replace(' ', '_')}.png"
+    image.save("./model_outputs/" + output_filename)
+    return image
 
 
 def preprocess(input_image, do_remove_background, foreground_ratio):
@@ -73,29 +79,35 @@ def preprocess(input_image, do_remove_background, foreground_ratio):
     return image
 
 
-def generate(image, mc_resolution, formats=["obj"]):
+def generate(image, mc_resolution, text_prompt, formats=["obj"]):
+    # Generate mesh using the TSR model
     scene_codes = tsr_model(image, device=device)
     mesh = tsr_model.extract_mesh(scene_codes, resolution=mc_resolution)[0]
     mesh = to_gradio_3d_orientation(mesh)
-    mesh_path = tempfile.NamedTemporaryFile(suffix=f".obj", delete=False)
-    mesh.export(mesh_path.name)
-    return mesh_path.name
+    
+    # Export the mesh to the model_outputs folder
+    mesh_name = f"{time.strftime(file_time_format)}_{text_prompt.replace(' ', '_')}.obj"
+    mesh.export("./model_outputs/" + mesh_name)
+    
+    return "./model_outputs/" + mesh_name
 
-def sliceObj(obj3D, size):
+def sliceObj(obj3D, size, text_prompt):
+    # Determine the printer configuration based on the size of the model in mm
     if int(size) > 30:
         config_type = "./prusaConfig_big.ini"
-    else: config_type = "./prusaConfig.ini"
-    command = f"prusa-slicer --load {config_type} --rotate-x 90 --scale-to-fit {size},{size},{size} --slice --output 3dObj.bgcode {obj3D}"
+    else:
+        config_type = "./prusaConfig.ini"
+
+    # Construct the command to slice the 3D model using PrusaSlicer
+    file_name = "./model_outputs/" + f"{time.strftime(file_time_format)}_{text_prompt.replace(' ', '_')}.bgcode"
+    command = f"prusa-slicer --load {config_type} --rotate-x 90 --scale-to-fit {size},{size},{size} --slice --output {file_name} {obj3D}"
+
+    # Execute the slicing command and capture the output
     process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE)
     output, _ = process.communicate()
-    return output.decode().strip()
 
-
-def run_example(image_pil):
-    preprocessed = preprocess(image_pil, False, 0.9)
-    mesh_name_obj = generate(preprocessed, 256, ["obj"])
-    return preprocessed, mesh_name_obj
-
+    # Return the output as a string
+    return output.decode().strip(), file_name
 
 with gr.Blocks(title="TripoSR") as interface:
     gr.Markdown(
@@ -132,8 +144,8 @@ with gr.Blocks(title="TripoSR") as interface:
                     elem_id="content_image",
                 )
                 processed_image = gr.Image(label="Processed Image", interactive=False)
-            with gr.Row(visible = False): # Hidden for now since it's not used
-                with gr.Group():
+            with gr.Row(): # Hidden for now since it's not used
+                with gr.Group(visible = False):
                     do_remove_background = gr.Checkbox(
                         label="Remove Background", value=True
                     )
@@ -162,7 +174,7 @@ with gr.Blocks(title="TripoSR") as interface:
             )
             gr.Markdown("Note: The model shown here is flipped. Download to get correct results.")
             with gr.Row():
-                download = gr.File("./3dObj.bgcode")
+                download = gr.File(label="Download the generated .bgcode file")
     
     # When user presses enter on the Text input, we check it's content input 
     #  and continue with the 3D pipeline
@@ -176,16 +188,16 @@ with gr.Blocks(title="TripoSR") as interface:
         outputs=[processed_image],
     ).success(
         fn=generate,
-        inputs=[processed_image, mc_resolution],
+        inputs=[processed_image, mc_resolution, input_text],
         outputs=[output_model_obj],
     ).success(
         fn=sliceObj,
-        inputs=[output_model_obj, set_size],
-        outputs=[slicer_output]
+        inputs=[output_model_obj, set_size, input_text],
+        outputs=[slicer_output, download]
     ),
 
 
-    submit.click(fn=check_input, inputs=[input_text, set_size]).success(
+    submit.click(fn=check_input, inputs=[input_text]).success(
         fn=image_generation,
         inputs=[input_text],
         outputs=[input_image]
@@ -195,12 +207,12 @@ with gr.Blocks(title="TripoSR") as interface:
         outputs=[processed_image],
     ).success(
         fn=generate,
-        inputs=[processed_image, mc_resolution],
+        inputs=[processed_image, mc_resolution, input_text],
         outputs=[output_model_obj],
     ).success(
         fn=sliceObj,
-        inputs=[output_model_obj, set_size],
-        outputs=[slicer_output]
+        inputs=[output_model_obj, set_size, input_text],
+        outputs=[slicer_output, download]
     ),
 
 

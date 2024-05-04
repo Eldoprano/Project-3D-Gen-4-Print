@@ -78,6 +78,7 @@ venv.bak/
 dev/
 
 # End of https://www.toptal.com/developers/gitignore/api/python,visualstudiocode,cuda,jupyternotebooks
+/model_outputs/*
 *.gcode
 *.bgcode
 *.tmp
