@@ -44,11 +44,14 @@ tsr_model.to(device)
 rembg_session = rembg.new_session()
 
 
-def check_input(prompt):
+def check_input(prompt, size):
     if prompt is None:
         raise gr.Error("Please write a prompt!")
+    if size is None:
+        raise gr.Error("Please specify the preferred model size!")
 
 def image_generation(text_input):
+    text_input = "Professional 3d model of " + text_input + ", dramatic lighting, highly detailed, volumetric, cartoon"
     return image_generation_model(prompt=text_input, num_inference_steps=4, guidance_scale=0.0).images[0]
 
 
@@ -80,10 +83,13 @@ def generate(image, mc_resolution, formats=["obj"]):
     mesh.export(mesh_path.name)
     return mesh_path.name
 
-def sliceObj(obj3D):
+def sliceObj(obj3D, size):
 
     "--support-material-threshold 50 --support-material-style snug"
-    command = f"prusa-slicer --support-material-threshold 50 --support-material-style snug --support-material {obj3D} --rotate-x 90 --scale-to-fit 50,50,50 --slice --output 3dObj.gcode"
+    if int(size) > 30:
+        config_type = "./prusaConfig_big.ini"
+    else: config_type = "./prusaConfig.ini"
+    command = f"prusa-slicer --load {config_type} --rotate-x 90 --scale-to-fit {size},{size},{size} --slice --output 3dObj.bgcode {obj3D}"
     process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE)
     output, _ = process.communicate()
     return output.decode().strip()
@@ -112,6 +118,12 @@ with gr.Blocks(title="TripoSR") as interface:
                 label="Prompt",
                 placeholder="What do you want to generate in 3D?"
             )
+            with gr.Row():
+                set_size = gr.Textbox(
+                    label="Set output model size",
+                    placeholder="Please enter the preferred output model size in mm"
+                )
+            
             with gr.Row():
                 input_image = gr.Image(
                     label="Input Image",
@@ -150,7 +162,9 @@ with gr.Blocks(title="TripoSR") as interface:
                 scale=1,
             )
             gr.Markdown("Note: The model shown here is flipped. Download to get correct results.")
-    submit.click(fn=check_input, inputs=[input_text]).success(
+            with gr.Row():
+                download = gr.File("./3dObj.bgcode")
+    submit.click(fn=check_input, inputs=[input_text, set_size]).success(
         fn=image_generation,
         inputs=[input_text],
         outputs=[input_image]
@@ -164,9 +178,11 @@ with gr.Blocks(title="TripoSR") as interface:
         outputs=[output_model_obj],
     ).success(
         fn=sliceObj,
-        inputs=[output_model_obj],
+        inputs=[output_model_obj, set_size],
         outputs=[slicer_output]
-    )
+    ),
+
+
 
 
 
