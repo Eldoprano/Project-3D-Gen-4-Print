@@ -59,8 +59,15 @@ def image_generation(text_input):
     image.save("./model_outputs/" + output_filename)
     return image
 
+def save_user_image(image):
+    # Save image to the model_outputs folder
+    output_filename = f"{time.strftime(file_time_format)}_user_input.png"
+    image.save("./model_outputs/" + output_filename)
+    return "user_input"
 
 def preprocess(input_image, do_remove_background, foreground_ratio):
+    # Unload image generation model from GPU (Probably..)
+    #  This should help to avoid memory issues
     torch.cuda.empty_cache()
     def fill_background(image):
         image = np.array(image).astype(np.float32) / 255.0
@@ -85,7 +92,7 @@ def generate(image, mc_resolution, text_prompt, formats=["obj"]):
     scene_codes = tsr_model(image, device=device)
     mesh = tsr_model.extract_mesh(scene_codes, resolution=mc_resolution)[0]
     mesh = to_gradio_3d_orientation(mesh)
-    
+
     # Export the mesh to the model_outputs folder
     mesh_name = f"{time.strftime(file_time_format)}_{text_prompt.replace(' ', '_')}.obj"
     mesh.export("./model_outputs/" + mesh_name)
@@ -183,9 +190,13 @@ with gr.Blocks(title="TripoSR") as interface:
             with gr.Row():
                 download = gr.File(label="Download the generated .bgcode file")
     
-    # When user presses enter on the Text input, we check it's content input 
-    #  and continue with the 3D pipeline
-    input_text.submit(fn=check_input, inputs=[input_text]).success(
+    # When user presses enter on the Text input or presses the submit button, 
+    #  we check it's content input and continue with the 3D pipeline
+    gr.on(
+        triggers=[input_text.submit, submit.click],
+        fn=check_input, 
+        inputs=[input_text]
+    ).success(
         fn=image_generation,
         inputs=[input_text],
         outputs=[input_image]
@@ -203,15 +214,16 @@ with gr.Blocks(title="TripoSR") as interface:
         outputs=[slicer_output, download]
     ),
 
-
-    submit.click(fn=check_input, inputs=[input_text]).success(
-        fn=image_generation,
-        inputs=[input_text],
-        outputs=[input_image]
+    # When user loads an image into input_image, we pass this image through the
+    #  pipeline, skipping the image generation step
+    input_image.upload(
+        fn=save_user_image,
+        inputs=[input_image],
+        outputs=[input_text]
     ).success(
-        fn=preprocess,
+        fn=preprocess, 
         inputs=[input_image, do_remove_background, foreground_ratio],
-        outputs=[processed_image],
+        outputs=[processed_image]
     ).success(
         fn=generate,
         inputs=[processed_image, mc_resolution, input_text],
@@ -221,8 +233,6 @@ with gr.Blocks(title="TripoSR") as interface:
         inputs=[output_model_obj, set_size, input_text],
         outputs=[slicer_output, download]
     ),
-
-
 
 
 
