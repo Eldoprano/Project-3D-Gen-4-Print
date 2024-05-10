@@ -20,7 +20,7 @@ RUN apt update && \
 
 # Install pip packages
 RUN pip install --upgrade setuptools && \
-    pip install jupyter torch torchvision torchaudio accelerate diffusers peft
+    pip install jupyter torch torchvision torchaudio accelerate diffusers peft pymeshlab
 
 
 # Download and setup TripoSR

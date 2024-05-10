@@ -16,6 +16,7 @@ from tsr.utils import remove_background, resize_foreground, to_gradio_3d_orienta
 import argparse
 from diffusers import DiffusionPipeline
 import subprocess
+import pymeshlab
 
 
 
@@ -88,7 +89,13 @@ def generate(image, mc_resolution, text_prompt, formats=["obj"]):
     # Export the mesh to the model_outputs folder
     mesh_name = f"{time.strftime(file_time_format)}_{text_prompt.replace(' ', '_')}.obj"
     mesh.export("./model_outputs/" + mesh_name)
-    
+
+    # Remove isolated pieces with pymeshlab
+    ms = pymeshlab.MeshSet()
+    ms.load_new_mesh("./model_outputs/" + mesh_name)
+    ms.meshing_remove_connected_component_by_diameter(mincomponentdiag = pymeshlab.PercentageValue(25.0))
+    ms.save_current_mesh("./model_outputs/" + mesh_name)
+
     return "./model_outputs/" + mesh_name
 
 def sliceObj(obj3D, size, text_prompt):
