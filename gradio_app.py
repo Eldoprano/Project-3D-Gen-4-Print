@@ -1,24 +1,14 @@
-import logging
-import os
-import tempfile
 import time
-
 import gradio as gr
 import numpy as np
 import rembg
 import torch
 from PIL import Image
-from functools import partial
-
 from tsr.system import TSR
 from tsr.utils import remove_background, resize_foreground, to_gradio_3d_orientation
-
-import argparse
 from diffusers import DiffusionPipeline
 import subprocess
 import pymeshlab
-
-
 
 if torch.cuda.is_available():
     device = "cuda:0"
@@ -31,9 +21,16 @@ tsr_model = TSR.from_pretrained(
     weight_name="model.ckpt",
 )
 
-# image_generation_model = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
-image_generation_model = DiffusionPipeline.from_pretrained("stabilityai/sdxl-turbo")
-image_generation_model.enable_model_cpu_offload()
+# Enter your HF token here
+access_token = "HF-Token"
+
+# image_generation_model = DiffusionPipeline.from_pretrained("stabilityai/sdxl-turbo")
+image_generation_model = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
+image_generation_model.load_lora_weights("artificialguybr/3DRedmond-V1")
+image_generation_model.to("cuda:0")
+model_specific_prompt = "3D Render Style, 3DRenderAF, "
+# image_generation_model.enable_model_cpu_offload()
+
 # image_generation_model.to(device)
 print(device)
 
@@ -43,21 +40,71 @@ tsr_model.to(device)
 
 
 rembg_session = rembg.new_session()
-file_time_format = '%d%b%y_%H-%M'
+file_time_format = '%y%b%d_%H-%M'
 
 
 def check_input(prompt):
     if prompt is None or prompt.strip() == "":
         raise gr.Error("Please write a prompt!")
 
-def image_generation(text_input):
-    mod_text_input = "Professional 3d model of " + text_input + ", dramatic lighting, highly detailed, volumetric, cartoon"
-    image = image_generation_model(prompt=mod_text_input, num_inference_steps=4, guidance_scale=0.0).images[0]
+# ----------------------------------------------
+# This functions are here to change the visibility of some elements
+# It is so that we can hide elements when user clicks on generate
+#  and show them when user clicks on feeling lucky (and vice versa)
+def change_visibility_of_single_output(button):
+    if button == "I'm Feeling Lucky":
+        visibility = True
+    elif button == "Generate":
+        visibility = False
+    return gr.Image(
+                label="Input Image",
+                image_mode="RGBA",
+                sources=['upload', 'webcam', 'clipboard'],
+                type="pil",
+                elem_id="content_image",
+                visible=visibility
+            )
+def change_visibility_of_preprocessing_output(button):
+    if button == "I'm Feeling Lucky":
+        visibility = True
+    elif button == "Generate":
+        visibility = False
+    return gr.Image(
+                label="Processed Image", 
+                interactive=False,
+                visible=visibility
+            )
+def change_visibility_of_gallery_outputs(button):
+    if button == "I'm Feeling Lucky":
+        visibility = False
+    elif button == "Generate":
+        visibility = True
+    return gr.Gallery(
+                label="Image Gallery",
+                visible=visibility,
+                allow_preview=False,
+            )
+# ----------------------------------------------
+
+def image_generation(text_input, button_clicked):
+    if button_clicked == "I'm Feeling Lucky":
+        num_images = 1
+    elif button_clicked == "Generate":
+        num_images = 4
+    mod_text_input = f"{model_specific_prompt} Professional 3d model of {text_input}, dramatic lighting, highly detailed, volumetric, cartoon"
+    images = image_generation_model(
+        prompt=mod_text_input, 
+        num_inference_steps=28, 
+        guidance_scale=7.0, 
+        num_images_per_prompt=num_images).images
 
     # Save image to the model_outputs folder
-    output_filename = f"{time.strftime(file_time_format)}_{text_input.replace(' ', '_')}.png"
-    image.save("./model_outputs/" + output_filename)
-    return image
+    for i, image in enumerate(images):
+        output_filename = f"{time.strftime(file_time_format)}_{text_input.replace(' ', '_')}_{i}.png"
+        image.save("./model_outputs/" + output_filename)
+    if button_clicked == "I'm Feeling Lucky":
+        return images[0]
+    return images
 
 def save_user_image(image):
     # Save image to the model_outputs folder
@@ -148,6 +195,13 @@ with gr.Blocks(title="TripoSR") as interface:
                     value=80,
                     step=5
                 )
+
+            with gr.Row():
+                image_gallery = gr.Gallery(
+                    label="Image Gallery",
+                    visible=False,
+                    allow_preview=False,
+                )
             
             with gr.Row():
                 input_image = gr.Image(
@@ -157,7 +211,11 @@ with gr.Blocks(title="TripoSR") as interface:
                     type="pil",
                     elem_id="content_image",
                 )
-                processed_image = gr.Image(label="Processed Image", interactive=False)
+                processed_image = gr.Image(
+                    label="Processed Image", 
+                    interactive=False
+                )
+
             with gr.Row(): # Hidden for now since it's not used
                 with gr.Group(visible = False):
                     do_remove_background = gr.Checkbox(
@@ -179,7 +237,9 @@ with gr.Blocks(title="TripoSR") as interface:
                     )
                 slicer_output = gr.Textbox(label="Slicer output")
             with gr.Row():
-                submit = gr.Button("Generate", elem_id="generate", variant="primary")
+                submit = gr.Button("Generate", elem_id="generate", variant="primary", scale=3)
+                lucky = gr.Button("I'm Feeling Lucky", elem_id="lucky", variant="secondary", scale=1)
+
         with gr.Column():
             output_model_obj = gr.Model3D(
                 label="Output Model (OBJ Format)",
@@ -190,15 +250,80 @@ with gr.Blocks(title="TripoSR") as interface:
             with gr.Row():
                 download = gr.File(label="Download the generated .bgcode file")
     
-    # When user presses enter on the Text input or presses the submit button, 
+    # When user presses submit or enter on the Text input, 
     #  we check it's content input and continue with the 3D pipeline
+    #  letting user select between image outputs
     gr.on(
-        triggers=[input_text.submit, submit.click],
-        fn=check_input, 
+        triggers=[submit.click, input_text.submit],
+        fn=check_input,
         inputs=[input_text]
+    # ---------------------------------------------------------
+    # All this code is to change the visibility of the elements
+    ).success(
+        fn=change_visibility_of_single_output, 
+        inputs=[submit], 
+        outputs=[input_image]
+    ).success(
+        fn=change_visibility_of_gallery_outputs, 
+        inputs=[submit], 
+        outputs=[image_gallery]
+    ).success(
+        fn=change_visibility_of_preprocessing_output, 
+        inputs=[submit], 
+        outputs=[processed_image]
+    # ---------------------------------------------------------
     ).success(
         fn=image_generation,
-        inputs=[input_text],
+        inputs=[input_text, submit],
+        outputs=[image_gallery]
+    )
+
+    def get_selected_image(images, evt: gr.SelectData):
+        return images[evt.index][0]
+    image_gallery.select(
+        get_selected_image,
+        inputs=[image_gallery],
+        outputs=input_image
+    ).success(
+        fn=preprocess,
+        inputs=[input_image, do_remove_background, foreground_ratio],
+        outputs=[processed_image],
+    ).success(
+        fn=generate,
+        inputs=[processed_image, mc_resolution, input_text],
+        outputs=[output_model_obj],
+    ).success(
+        fn=sliceObj,
+        inputs=[output_model_obj, set_size, input_text],
+        outputs=[slicer_output, download]
+    )
+
+
+    # When user presses the feeling lucky button, 
+    #  we check it's content input and continue with the 3D pipeline
+    #  without letting user select between image outputs
+    gr.on(
+        triggers=[lucky.click],
+        fn=check_input, 
+        inputs=[input_text]
+    # ---------------------------------------------------------
+    # All this code is to change the visibility of the elements
+    ).success(
+        fn=change_visibility_of_single_output, 
+        inputs=[lucky], 
+        outputs=[input_image]
+    ).success(
+        fn=change_visibility_of_gallery_outputs, 
+        inputs=[lucky], 
+        outputs=[image_gallery]
+    ).success(
+        fn=change_visibility_of_preprocessing_output, 
+        inputs=[lucky], 
+        outputs=[processed_image]
+    # ---------------------------------------------------------
+    ).success(
+        fn=image_generation,
+        inputs=[input_text, lucky],
         outputs=[input_image]
     ).success(
         fn=preprocess,

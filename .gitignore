@@ -83,3 +83,5 @@ dev/
 *.bgcode
 *.tmp
 *.postprocess
+
+results/
