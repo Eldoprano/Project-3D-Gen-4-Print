@@ -112,8 +112,9 @@ def save_user_image(image):
     image.save("./model_outputs/" + output_filename)
     return "user_input"
 
-def preprocess(input_image, do_remove_background, foreground_ratio):
-    # Unload image generation model from GPU (Probably..)
+# Remove background and resize the image
+def preprocess_image(input_image, do_remove_background, foreground_ratio):
+    # Unload image generation model from GPU
     #  This should help to avoid memory issues
     torch.cuda.empty_cache()
     def fill_background(image):
@@ -133,10 +134,29 @@ def preprocess(input_image, do_remove_background, foreground_ratio):
             image = fill_background(image)
     return image
 
+from PIL import Image
+def preprocess_multiple_images(input_images, do_remove_background, foreground_ratio):
+    processed_images = []
+    for input_image, _ in input_images:
+        image = Image.open(input_image)
+        processed_image = preprocess_image(image, do_remove_background, foreground_ratio)
+        processed_images.append(processed_image)
+    return processed_images
+
+def refine_mesh(mesh_path):
+    # Remove isolated pieces with pymeshlab
+    ms = pymeshlab.MeshSet()
+    ms.load_new_mesh(mesh_path)
+    ms.meshing_remove_connected_component_by_diameter(mincomponentdiag = pymeshlab.PercentageValue(25.0))
+    ms.save_current_mesh(mesh_path)
+    return mesh_path
 
 def generate(image, mc_resolution, text_prompt, formats=["obj"]):
+    # Convert numpy.ndarray to PIL Image if necessary
+    if isinstance(image, np.ndarray):
+        image = Image.fromarray(image)
     # Generate mesh using the TSR model
-    scene_codes = tsr_model(image, device=device)
+    scene_codes = tsr_model(image.convert("RGB"), device=device)
     mesh = tsr_model.extract_mesh(scene_codes, resolution=mc_resolution)[0]
     mesh = to_gradio_3d_orientation(mesh)
 
@@ -144,13 +164,10 @@ def generate(image, mc_resolution, text_prompt, formats=["obj"]):
     mesh_name = f"{time.strftime(file_time_format)}_{text_prompt.replace(' ', '_')}.obj"
     mesh.export("./model_outputs/" + mesh_name)
 
-    # Remove isolated pieces with pymeshlab
-    ms = pymeshlab.MeshSet()
-    ms.load_new_mesh("./model_outputs/" + mesh_name)
-    ms.meshing_remove_connected_component_by_diameter(mincomponentdiag = pymeshlab.PercentageValue(25.0))
-    ms.save_current_mesh("./model_outputs/" + mesh_name)
+    refined_mesh = refine_mesh("./model_outputs/" + mesh_name)
 
-    return "./model_outputs/" + mesh_name
+    return refined_mesh
+
 
 def sliceObj(obj3D, size, text_prompt):
     # Determine the printer configuration based on the size of the model in mm
@@ -249,10 +266,13 @@ with gr.Blocks(title="TripoSR") as interface:
             gr.Markdown("Note: The model shown here is flipped. Download to get correct results.")
             with gr.Row():
                 download = gr.File(label="Download the generated .bgcode file")
-    
-    # When user presses submit or enter on the Text input, 
-    #  we check it's content input and continue with the 3D pipeline
-    #  letting user select between image outputs
+
+
+################################################
+#       The pipelines are defined here         #
+################################################
+
+# Multiple image selection Pipeline
     gr.on(
         triggers=[submit.click, input_text.submit],
         fn=check_input,
@@ -264,20 +284,24 @@ with gr.Blocks(title="TripoSR") as interface:
         inputs=[submit], 
         outputs=[input_image]
     ).success(
-        fn=change_visibility_of_gallery_outputs, 
-        inputs=[submit], 
-        outputs=[image_gallery]
-    ).success(
         fn=change_visibility_of_preprocessing_output, 
         inputs=[submit], 
         outputs=[processed_image]
+    ).success(
+        fn=change_visibility_of_gallery_outputs, 
+        inputs=[submit], 
+        outputs=[image_gallery]
     # ---------------------------------------------------------
     ).success(
         fn=image_generation,
         inputs=[input_text, submit],
         outputs=[image_gallery]
+    ).success(
+        fn=preprocess_multiple_images,
+        inputs=[image_gallery, do_remove_background, foreground_ratio],
+        outputs=[image_gallery],
     )
-
+    # Here the pipeline continues once the user selects an image
     def get_selected_image(images, evt: gr.SelectData):
         return images[evt.index][0]
     image_gallery.select(
@@ -285,12 +309,8 @@ with gr.Blocks(title="TripoSR") as interface:
         inputs=[image_gallery],
         outputs=input_image
     ).success(
-        fn=preprocess,
-        inputs=[input_image, do_remove_background, foreground_ratio],
-        outputs=[processed_image],
-    ).success(
         fn=generate,
-        inputs=[processed_image, mc_resolution, input_text],
+        inputs=[input_image, mc_resolution, input_text],
         outputs=[output_model_obj],
     ).success(
         fn=sliceObj,
@@ -313,20 +333,20 @@ with gr.Blocks(title="TripoSR") as interface:
         inputs=[lucky], 
         outputs=[input_image]
     ).success(
-        fn=change_visibility_of_gallery_outputs, 
-        inputs=[lucky], 
-        outputs=[image_gallery]
-    ).success(
         fn=change_visibility_of_preprocessing_output, 
         inputs=[lucky], 
         outputs=[processed_image]
+    ).success(
+        fn=change_visibility_of_gallery_outputs, 
+        inputs=[lucky], 
+        outputs=[image_gallery]
     # ---------------------------------------------------------
     ).success(
         fn=image_generation,
         inputs=[input_text, lucky],
         outputs=[input_image]
     ).success(
-        fn=preprocess,
+        fn=preprocess_image,
         inputs=[input_image, do_remove_background, foreground_ratio],
         outputs=[processed_image],
     ).success(
@@ -346,7 +366,7 @@ with gr.Blocks(title="TripoSR") as interface:
         inputs=[input_image],
         outputs=[input_text]
     ).success(
-        fn=preprocess, 
+        fn=preprocess_image, 
         inputs=[input_image, do_remove_background, foreground_ratio],
         outputs=[processed_image]
     ).success(
