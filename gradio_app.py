@@ -382,7 +382,7 @@ with gr.Blocks(title="TripoSR") as interface:
 
 
 if __name__ == '__main__':
-    interface.queue(max_size=1)
+    interface.queue(max_size=15)
     interface.launch(
         auth= None,
         share="store_true",
