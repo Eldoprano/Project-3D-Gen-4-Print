@@ -9,43 +9,54 @@ from tsr.utils import remove_background, resize_foreground, to_gradio_3d_orienta
 from diffusers import DiffusionPipeline
 import subprocess
 import pymeshlab
+from transformers import pipeline
+from PIL import Image
+
 
 if torch.cuda.is_available():
     device = "cuda:0"
 else:
     device = "cpu"
 
-tsr_model = TSR.from_pretrained(
-    "stabilityai/TripoSR",
-    config_name="config.yaml",
-    weight_name="model.ckpt",
-)
-
 # Enter your HF token here
-access_token = "HF-Token"
+hf_access_token = "HF-Token"
+file_time_format = '%y%b%d_%H-%M'
 
+###################
+# Load the models #
+###################
+
+### Load the image generation model ###
 # image_generation_model = DiffusionPipeline.from_pretrained("stabilityai/sdxl-turbo")
 image_generation_model = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
 image_generation_model.load_lora_weights("artificialguybr/3DRedmond-V1")
 image_generation_model.to("cuda:0")
 model_specific_prompt = "3D Render Style, 3DRenderAF, "
 # image_generation_model.enable_model_cpu_offload()
-
 # image_generation_model.to(device)
-print(device)
 
+
+### Load TripoSR ###
+tsr_model = TSR.from_pretrained(
+    "stabilityai/TripoSR",
+    config_name="config.yaml",
+    weight_name="model.ckpt",
+)
 # adjust the chunk size to balance between speed and memory usage
 tsr_model.renderer.set_chunk_size(8192)
 tsr_model.to(device)
 
-
+### Load the background removal model ###
 rembg_session = rembg.new_session()
-file_time_format = '%y%b%d_%H-%M'
+
+### Load the speech recognition model ###
+transcriber = pipeline("automatic-speech-recognition", model="openai/whisper-tiny")
 
 
-def check_input(prompt):
-    if prompt is None or prompt.strip() == "":
-        raise gr.Error("Please write a prompt!")
+
+######################
+# Pipeline Functions #
+######################
 
 # ----------------------------------------------
 # This functions are here to change the visibility of some elements
@@ -56,36 +67,36 @@ def change_visibility_of_single_output(button):
         visibility = True
     elif button == "Generate":
         visibility = False
-    return gr.Image(
-                label="Input Image",
-                image_mode="RGBA",
-                sources=['upload', 'webcam', 'clipboard'],
-                type="pil",
-                elem_id="content_image",
-                visible=visibility
-            )
+    return gr.Image( label="Input Image", image_mode="RGBA", sources=['upload', 'webcam', 'clipboard'], type="pil", elem_id="content_image", visible=visibility )
 def change_visibility_of_preprocessing_output(button):
     if button == "I'm Feeling Lucky":
         visibility = True
     elif button == "Generate":
         visibility = False
-    return gr.Image(
-                label="Processed Image", 
-                interactive=False,
-                visible=visibility
-            )
+    return gr.Image( label="Processed Image", interactive=False, visible=visibility )
 def change_visibility_of_gallery_outputs(button):
     if button == "I'm Feeling Lucky":
         visibility = False
     elif button == "Generate":
         visibility = True
-    return gr.Gallery(
-                label="Image Gallery",
-                visible=visibility,
-                allow_preview=False,
-            )
+    return gr.Gallery( label="Image Gallery", visible=visibility, allow_preview=False )
 # ----------------------------------------------
 
+# Check if the prompt is empty
+def check_input(prompt):
+    if prompt is None or prompt.strip() == "":
+        raise gr.Error("Please write a prompt!")
+
+# Transcribe the audio to text
+def audio_to_text(audio):
+    sr, y = audio
+    y = y.astype(np.float32)
+    y /= np.max(np.abs(y))
+
+    return transcriber({"sampling_rate": sr, "raw": y})["text"]
+
+# Generate images using the image generation model
+# `button_clicked` decides whether to generate 1 or 4 images
 def image_generation(text_input, button_clicked):
     if button_clicked == "I'm Feeling Lucky":
         num_images = 1
@@ -106,8 +117,9 @@ def image_generation(text_input, button_clicked):
         return images[0]
     return images
 
+
+# Save image to the model_outputs folder
 def save_user_image(image):
-    # Save image to the model_outputs folder
     output_filename = f"{time.strftime(file_time_format)}_user_input.png"
     image.save("./model_outputs/" + output_filename)
     return "user_input"
@@ -134,7 +146,7 @@ def preprocess_image(input_image, do_remove_background, foreground_ratio):
             image = fill_background(image)
     return image
 
-from PIL import Image
+# Remove background and resize multiple images
 def preprocess_multiple_images(input_images, do_remove_background, foreground_ratio):
     processed_images = []
     for input_image, _ in input_images:
@@ -143,14 +155,16 @@ def preprocess_multiple_images(input_images, do_remove_background, foreground_ra
         processed_images.append(processed_image)
     return processed_images
 
+
+# Remove isolated pieces with pymeshlab
 def refine_mesh(mesh_path):
-    # Remove isolated pieces with pymeshlab
     ms = pymeshlab.MeshSet()
     ms.load_new_mesh(mesh_path)
     ms.meshing_remove_connected_component_by_diameter(mincomponentdiag = pymeshlab.PercentageValue(25.0))
     ms.save_current_mesh(mesh_path)
     return mesh_path
 
+# Generate 3D model using TripoSR
 def generate(image, mc_resolution, text_prompt, formats=["obj"]):
     # Convert numpy.ndarray to PIL Image if necessary
     if isinstance(image, np.ndarray):
@@ -168,7 +182,7 @@ def generate(image, mc_resolution, text_prompt, formats=["obj"]):
 
     return refined_mesh
 
-
+# Slice the 3D model using PrusaSlicer
 def sliceObj(obj3D, size, text_prompt):
     # Determine the printer configuration based on the size of the model in mm
     if int(size) > 30:
@@ -187,23 +201,38 @@ def sliceObj(obj3D, size, text_prompt):
     # Return the output as a string
     return output.decode().strip(), file_name
 
+####################
+# Gradio Interface #
+####################
 with gr.Blocks(title="TripoSR") as interface:
     gr.Markdown(
         """
     # Generative 3D Demo using Stable Diffusion and TripoSR
-    
-    **Tips:**
-    1. If you find the result is unsatisfied, please try to change the foreground ratio. It might improve the results.
-    2. It's better to disable "Remove Background" for the provided examples (except fot the last one) since they have been already preprocessed.
-    3. Otherwise, please disable "Remove Background" option only if your input image is RGBA with transparent background, image contents are centered and occupy more than 70% of image width or height.
     """
+    # **Tips:**
+    # 1. If you find the result is unsatisfied, please try to change the foreground ratio. It might improve the results.
+    # 2. It's better to disable "Remove Background" for the provided examples (except fot the last one) since they have been already preprocessed.
+    # 3. Otherwise, please disable "Remove Background" option only if your input image is RGBA with transparent background, image contents are centered and occupy more than 70% of image width or height.
     )
     with gr.Row(variant="panel"):
         with gr.Column():
-            input_text = gr.Textbox(
-                label="Prompt",
-                placeholder="What do you want to generate in 3D?"
-            )
+            with gr.Row():
+                input_text = gr.Textbox(
+                    label="Prompt",
+                    placeholder="What do you want to generate in 3D?",
+                    scale=3,
+                )
+                input_voice = gr.Audio(
+                    sources=["microphone"],
+                    scale=1,
+                    editable=False,
+                    container=False,
+                    waveform_options=gr.WaveformOptions(
+                        waveform_color="#01C6FF",
+                        waveform_progress_color="#0066B4",
+                        show_controls=False,
+                    ),
+                )
             with gr.Row():
                 set_size = gr.Slider(
                     label="Set output model size in mm",
