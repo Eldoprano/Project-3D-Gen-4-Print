@@ -10,6 +10,7 @@ from diffusers import DiffusionPipeline
 import subprocess
 import pymeshlab
 from transformers import pipeline
+from functools import partial
 from PIL import Image
 
 
@@ -50,7 +51,7 @@ tsr_model.to(device)
 rembg_session = rembg.new_session()
 
 ### Load the speech recognition model ###
-transcriber = pipeline("automatic-speech-recognition", model="openai/whisper-tiny")
+transcriber = pipeline("automatic-speech-recognition", model="openai/whisper-medium", generate_kwargs={"task":"translate"})
 
 
 
@@ -63,23 +64,13 @@ transcriber = pipeline("automatic-speech-recognition", model="openai/whisper-tin
 # It is so that we can hide elements when user clicks on generate
 #  and show them when user clicks on feeling lucky (and vice versa)
 def change_visibility_of_single_output(button):
-    if button == "I'm Feeling Lucky":
-        visibility = True
-    elif button == "Generate":
-        visibility = False
-    return gr.Image( label="Input Image", image_mode="RGBA", sources=['upload', 'webcam', 'clipboard'], type="pil", elem_id="content_image", visible=visibility )
+    return gr.Image(label="Input Image", image_mode="RGBA", sources=['upload', 'webcam', 'clipboard'], type="pil", elem_id="content_image", visible=button == "I'm Feeling Lucky")
+
 def change_visibility_of_preprocessing_output(button):
-    if button == "I'm Feeling Lucky":
-        visibility = True
-    elif button == "Generate":
-        visibility = False
-    return gr.Image( label="Processed Image", interactive=False, visible=visibility )
+    return gr.Image(label="Processed Image", interactive=False, visible=button == "I'm Feeling Lucky")
+
 def change_visibility_of_gallery_outputs(button):
-    if button == "I'm Feeling Lucky":
-        visibility = False
-    elif button == "Generate":
-        visibility = True
-    return gr.Gallery( label="Image Gallery", visible=visibility, allow_preview=False )
+    return gr.Gallery(label="Image Gallery", visible=button == "Generate", allow_preview=False)
 # ----------------------------------------------
 
 # Check if the prompt is empty
@@ -90,14 +81,23 @@ def check_input(prompt):
 # Transcribe the audio to text
 def audio_to_text(audio):
     sr, y = audio
+    # Check if the audio has more than one channel and convert it to mono if necessary
+    if y.ndim > 1 and y.shape[1] > 1:
+        y = np.mean(y, axis=1)  # Convert to mono by averaging the channels
     y = y.astype(np.float32)
-    y /= np.max(np.abs(y))
+    y /= np.max(np.abs(y), axis=0, keepdims=True) + 1e-9  # Normalize audio
 
     return transcriber({"sampling_rate": sr, "raw": y})["text"]
+
+# Sanitaze file name
+def sanitize_file_name(file_name, size=250):
+    sanitized = "".join([c for c in file_name.replace(" ","_") if c.isalpha() or c.isdigit() or c in "._-"]).rstrip()
+    return sanitized[:size]
 
 # Generate images using the image generation model
 # `button_clicked` decides whether to generate 1 or 4 images
 def image_generation(text_input, button_clicked):
+    torch.cuda.empty_cache()
     if button_clicked == "I'm Feeling Lucky":
         num_images = 1
     elif button_clicked == "Generate":
@@ -111,8 +111,9 @@ def image_generation(text_input, button_clicked):
 
     # Save image to the model_outputs folder
     for i, image in enumerate(images):
-        output_filename = f"{time.strftime(file_time_format)}_{text_input.replace(' ', '_')}_{i}.png"
-        image.save("./model_outputs/" + output_filename)
+        output_filename = f"{time.strftime(file_time_format)}_{text_input}_{i}"
+        output_filename = sanitize_file_name(output_filename)
+        image.save("./model_outputs/" + output_filename + ".png")
     if button_clicked == "I'm Feeling Lucky":
         return images[0]
     return images
@@ -120,8 +121,9 @@ def image_generation(text_input, button_clicked):
 
 # Save image to the model_outputs folder
 def save_user_image(image):
-    output_filename = f"{time.strftime(file_time_format)}_user_input.png"
-    image.save("./model_outputs/" + output_filename)
+    output_filename = f"{time.strftime(file_time_format)}_user_input"
+    output_filename = sanitize_file_name(output_filename)
+    image.save("./model_outputs/" + output_filename + ".png")
     return "user_input"
 
 # Remove background and resize the image
@@ -175,10 +177,11 @@ def generate(image, mc_resolution, text_prompt, formats=["obj"]):
     mesh = to_gradio_3d_orientation(mesh)
 
     # Export the mesh to the model_outputs folder
-    mesh_name = f"{time.strftime(file_time_format)}_{text_prompt.replace(' ', '_')}.obj"
-    mesh.export("./model_outputs/" + mesh_name)
+    mesh_name = f"{time.strftime(file_time_format)}_{text_prompt}"
+    mesh_name = sanitize_file_name(mesh_name)
+    mesh.export("./model_outputs/" + mesh_name + ".obj")
 
-    refined_mesh = refine_mesh("./model_outputs/" + mesh_name)
+    refined_mesh = refine_mesh("./model_outputs/" + mesh_name + ".obj")
 
     return refined_mesh
 
@@ -191,7 +194,9 @@ def sliceObj(obj3D, size, text_prompt):
         config_type = "./prusaConfig.ini"
 
     # Construct the command to slice the 3D model using PrusaSlicer
-    file_name = "./model_outputs/" + f"{time.strftime(file_time_format)}_{text_prompt.replace(' ', '_')}.bgcode"
+    text_prompt = f"{time.strftime(file_time_format)}_{text_prompt}"
+    text_prompt = sanitize_file_name(text_prompt)
+    file_name = "./model_outputs/" + text_prompt + ".bgcode"
     command = f"prusa-slicer --load {config_type} --rotate-x 90 --scale-to-fit {size},{size},{size} --slice --output {file_name} {obj3D}"
 
     # Execute the slicing command and capture the output
@@ -200,6 +205,12 @@ def sliceObj(obj3D, size, text_prompt):
 
     # Return the output as a string
     return output.decode().strip(), file_name
+
+# For the proof of concept of Gaussian Splatting
+def runSplatExample(video):
+    video = str(video)
+    video = video.split('/')[-1].replace("muted_", "")
+    return "examples/" + video.replace('.mp4', '.splat')
 
 ####################
 # Gradio Interface #
@@ -261,6 +272,12 @@ with gr.Blocks(title="TripoSR") as interface:
                     label="Processed Image", 
                     interactive=False
                 )
+                input_video = gr.Video(
+                    label="Input Image",
+                    sources=[],
+                    elem_id="content_video",
+                    visible=False
+                )
 
             with gr.Row(): # Hidden for now since it's not used
                 with gr.Group(visible = False):
@@ -295,6 +312,21 @@ with gr.Blocks(title="TripoSR") as interface:
             gr.Markdown("Note: The model shown here is flipped. Download to get correct results.")
             with gr.Row():
                 download = gr.File(label="Download the generated .bgcode file")
+    
+    # Proof of concept for Gaussian Splatting
+    with gr.Row(variant="panel"):
+        gr.Examples(
+            examples=[
+                "examples/kemptenAuto.mp4",
+                # "examples/kemptenStatue.mp4", # Too large to upload to github..
+                "examples/valhala.mp4",
+            ],
+            label="Gaussian Splatting input examples",
+            inputs=[input_video],
+            fn=partial(runSplatExample),
+            outputs=[output_model_obj],
+            run_on_click=True,
+        )
 
 
 ################################################
@@ -387,6 +419,45 @@ with gr.Blocks(title="TripoSR") as interface:
         inputs=[output_model_obj, set_size, input_text],
         outputs=[slicer_output, download]
     ),
+
+    # When records an audio and presses the stop button
+    input_voice.stop_recording(
+        fn=audio_to_text,
+        inputs=[input_voice],
+        outputs=[input_text]
+    # ---------------------------------------------------------
+    # All this code is to change the visibility of the elements
+    ).success(
+        fn=change_visibility_of_single_output, 
+        inputs=[lucky], 
+        outputs=[input_image]
+    ).success(
+        fn=change_visibility_of_preprocessing_output, 
+        inputs=[lucky], 
+        outputs=[processed_image]
+    ).success(
+        fn=change_visibility_of_gallery_outputs, 
+        inputs=[lucky], 
+        outputs=[image_gallery]
+    # ---------------------------------------------------------
+    ).success(
+        fn=image_generation,
+        inputs=[input_text, lucky],
+        outputs=[input_image]
+    ).success(
+        fn=preprocess_image,
+        inputs=[input_image, do_remove_background, foreground_ratio],
+        outputs=[processed_image],
+    ).success(
+        fn=generate,
+        inputs=[processed_image, mc_resolution, input_text],
+        outputs=[output_model_obj],
+    ).success(
+        fn=sliceObj,
+        inputs=[output_model_obj, set_size, input_text],
+        outputs=[slicer_output, download]
+    ),
+
 
     # When user loads an image into input_image, we pass this image through the
     #  pipeline, skipping the image generation step
