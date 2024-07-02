@@ -73,51 +73,18 @@ def change_visibility_of_gallery_outputs(button):
     return gr.Gallery(label="Image Gallery", visible=button == "Generate", allow_preview=False)
 # ----------------------------------------------
 
+####################
+# Helper Functions #
+####################
 # Check if the prompt is empty
 def check_input(prompt):
     if prompt is None or prompt.strip() == "":
         raise gr.Error("Please write a prompt!")
 
-# Transcribe the audio to text
-def audio_to_text(audio):
-    sr, y = audio
-    # Check if the audio has more than one channel and convert it to mono if necessary
-    if y.ndim > 1 and y.shape[1] > 1:
-        y = np.mean(y, axis=1)  # Convert to mono by averaging the channels
-    y = y.astype(np.float32)
-    y /= np.max(np.abs(y), axis=0, keepdims=True) + 1e-9  # Normalize audio
-
-    return transcriber({"sampling_rate": sr, "raw": y})["text"]
-
-# Sanitaze file name
+# Remove special characters from the file name
 def sanitize_file_name(file_name, size=250):
     sanitized = "".join([c for c in file_name.replace(" ","_") if c.isalpha() or c.isdigit() or c in "._-"]).rstrip()
     return sanitized[:size]
-
-# Generate images using the image generation model
-# `button_clicked` decides whether to generate 1 or 4 images
-def image_generation(text_input, button_clicked):
-    torch.cuda.empty_cache()
-    if button_clicked == "I'm Feeling Lucky":
-        num_images = 1
-    elif button_clicked == "Generate":
-        num_images = 4
-    mod_text_input = f"{model_specific_prompt} Professional 3d model of {text_input}, dramatic lighting, highly detailed, volumetric, cartoon"
-    images = image_generation_model(
-        prompt=mod_text_input, 
-        num_inference_steps=28, 
-        guidance_scale=7.0, 
-        num_images_per_prompt=num_images).images
-
-    # Save image to the model_outputs folder
-    for i, image in enumerate(images):
-        output_filename = f"{time.strftime(file_time_format)}_{text_input}_{i}"
-        output_filename = sanitize_file_name(output_filename)
-        image.save("./model_outputs/" + output_filename + ".png")
-    if button_clicked == "I'm Feeling Lucky":
-        return images[0]
-    return images
-
 
 # Save image to the model_outputs folder
 def save_user_image(image):
@@ -166,25 +133,6 @@ def refine_mesh(mesh_path):
     ms.save_current_mesh(mesh_path)
     return mesh_path
 
-# Generate 3D model using TripoSR
-def generate(image, mc_resolution, text_prompt, formats=["obj"]):
-    # Convert numpy.ndarray to PIL Image if necessary
-    if isinstance(image, np.ndarray):
-        image = Image.fromarray(image)
-    # Generate mesh using the TSR model
-    scene_codes = tsr_model(image.convert("RGB"), device=device)
-    mesh = tsr_model.extract_mesh(scene_codes, resolution=mc_resolution)[0]
-    mesh = to_gradio_3d_orientation(mesh)
-
-    # Export the mesh to the model_outputs folder
-    mesh_name = f"{time.strftime(file_time_format)}_{text_prompt}"
-    mesh_name = sanitize_file_name(mesh_name)
-    mesh.export("./model_outputs/" + mesh_name + ".obj")
-
-    refined_mesh = refine_mesh("./model_outputs/" + mesh_name + ".obj")
-
-    return refined_mesh
-
 # Slice the 3D model using PrusaSlicer
 def sliceObj(obj3D, size, text_prompt):
     # Determine the printer configuration based on the size of the model in mm
@@ -206,11 +154,69 @@ def sliceObj(obj3D, size, text_prompt):
     # Return the output as a string
     return output.decode().strip(), file_name
 
-# For the proof of concept of Gaussian Splatting
+# It returns a Gaussian Splatt for a given example video
 def runSplatExample(video):
     video = str(video)
     video = video.split('/')[-1].replace("muted_", "")
     return "examples/" + video.replace('.mp4', '.splat')
+
+#################
+# Use AI Models #
+#################
+
+# Transcribe the audio to text and translate it to English
+def audio_to_text(audio):
+    sr, y = audio
+    # Check if the audio has more than one channel and convert it to mono if necessary
+    if y.ndim > 1 and y.shape[1] > 1:
+        y = np.mean(y, axis=1)  # Convert to mono by averaging the channels
+    y = y.astype(np.float32)
+    y /= np.max(np.abs(y), axis=0, keepdims=True) + 1e-9  # Normalize audio
+
+    return transcriber({"sampling_rate": sr, "raw": y})["text"]
+
+# Generate images using the image generation model
+# `button_clicked` decides whether to generate 1 or 4 images (sorry for that, it's not a nice solution)
+def image_generation(text_input, button_clicked):
+    torch.cuda.empty_cache()
+    if button_clicked == "I'm Feeling Lucky":
+        num_images = 1
+    elif button_clicked == "Generate":
+        num_images = 4
+    mod_text_input = f"{model_specific_prompt} Professional 3d model of {text_input}, dramatic lighting, highly detailed, volumetric, cartoon"
+    images = image_generation_model(
+        prompt=mod_text_input, 
+        num_inference_steps=28, 
+        guidance_scale=7.0, 
+        num_images_per_prompt=num_images).images
+
+    # Save image to the model_outputs folder
+    for i, image in enumerate(images):
+        output_filename = f"{time.strftime(file_time_format)}_{text_input}_{i}"
+        output_filename = sanitize_file_name(output_filename)
+        image.save("./model_outputs/" + output_filename + ".png")
+    if button_clicked == "I'm Feeling Lucky":
+        return images[0]
+    return images
+
+# Generate 3D model using TripoSR
+def generate(image, mc_resolution, text_prompt):
+    # Convert numpy.ndarray to PIL Image if necessary
+    if isinstance(image, np.ndarray):
+        image = Image.fromarray(image)
+    # Generate mesh using the TSR model
+    scene_codes = tsr_model(image.convert("RGB"), device=device)
+    mesh = tsr_model.extract_mesh(scene_codes, resolution=mc_resolution)[0]
+    mesh = to_gradio_3d_orientation(mesh)
+
+    # Export the mesh to the model_outputs folder
+    mesh_name = f"{time.strftime(file_time_format)}_{text_prompt}"
+    mesh_name = sanitize_file_name(mesh_name)
+    mesh.export("./model_outputs/" + mesh_name + ".obj")
+
+    refined_mesh = refine_mesh("./model_outputs/" + mesh_name + ".obj")
+
+    return refined_mesh
 
 ####################
 # Gradio Interface #
@@ -220,10 +226,6 @@ with gr.Blocks(title="TripoSR") as interface:
         """
     # Generative 3D Demo using Stable Diffusion and TripoSR
     """
-    # **Tips:**
-    # 1. If you find the result is unsatisfied, please try to change the foreground ratio. It might improve the results.
-    # 2. It's better to disable "Remove Background" for the provided examples (except fot the last one) since they have been already preprocessed.
-    # 3. Otherwise, please disable "Remove Background" option only if your input image is RGBA with transparent background, image contents are centered and occupy more than 70% of image width or height.
     )
     with gr.Row(variant="panel"):
         with gr.Column():
@@ -279,7 +281,9 @@ with gr.Blocks(title="TripoSR") as interface:
                     visible=False
                 )
 
-            with gr.Row(): # Hidden for now since it's not used
+            with gr.Row(): # Hidden since to make the interface more simple. 
+                           # Please refer to https://huggingface.co/spaces/stabilityai/TripoSR
+                           # to see how it changes 3D Model generation
                 with gr.Group(visible = False):
                     do_remove_background = gr.Checkbox(
                         label="Remove Background", value=True
@@ -333,7 +337,7 @@ with gr.Blocks(title="TripoSR") as interface:
 #       The pipelines are defined here         #
 ################################################
 
-# Multiple image selection Pipeline
+# Multiple image selection Pipeline (We generate 4 images and let the user select one)
     gr.on(
         triggers=[submit.click, input_text.submit],
         fn=check_input,
@@ -380,9 +384,7 @@ with gr.Blocks(title="TripoSR") as interface:
     )
 
 
-    # When user presses the feeling lucky button, 
-    #  we check it's content input and continue with the 3D pipeline
-    #  without letting user select between image outputs
+# Lucky button Pipeline (We generate only one image)
     gr.on(
         triggers=[lucky.click],
         fn=check_input, 
@@ -420,7 +422,7 @@ with gr.Blocks(title="TripoSR") as interface:
         outputs=[slicer_output, download]
     ),
 
-    # When records an audio and presses the stop button
+# Voice input pipeline
     input_voice.stop_recording(
         fn=audio_to_text,
         inputs=[input_voice],
@@ -459,8 +461,7 @@ with gr.Blocks(title="TripoSR") as interface:
     ),
 
 
-    # When user loads an image into input_image, we pass this image through the
-    #  pipeline, skipping the image generation step
+# Image input pipeline (When uploads its own image)
     input_image.upload(
         fn=save_user_image,
         inputs=[input_image],
@@ -479,13 +480,12 @@ with gr.Blocks(title="TripoSR") as interface:
         outputs=[slicer_output, download]
     ),
 
-
-
+# Start the interface
 if __name__ == '__main__':
     interface.queue(max_size=15)
     interface.launch(
         auth= None,
         share="store_true",
         server_name= None, 
-        server_port= 7865
+        server_port= 7866
     )

@@ -1,7 +1,12 @@
 # 3DGen4Print
-This project aims to provide a simple and fast way to generate printable 3D models from text prompts. 
+This project aims to provide a simple and fast way to generate printable 3D models from voice, text prompts or images.
 
-For the time being it uses StableDiffusionXL-Turbo to generate images from text prompts and TripoSR to generate 3D models from images.
+It was created using Gradio as a frontend, which makes it easy to change the models used and gives a simple interface to the user.
+
+The models used in the project are:
+- Voice to text: [Whisper Medium](https://huggingface.co/openai/whisper-medium)
+- Text to image: [StableDiffusionXL-Base+LORA trained for 3D Style Images](https://huggingface.co/artificialguybr/3DRedmond-V1)
+- Image to 3D: [TripoSR](https://github.com/VAST-AI-Research/TripoSR)
 
 ## Getting Started
 ### Installation
