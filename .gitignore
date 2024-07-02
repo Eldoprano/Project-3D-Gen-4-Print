@@ -75,7 +75,6 @@ venv.bak/
 # Ignore all local history of files
 .history
 
-dev/
 
 # End of https://www.toptal.com/developers/gitignore/api/python,visualstudiocode,cuda,jupyternotebooks
 /model_outputs/*
@@ -85,3 +84,4 @@ dev/
 *.postprocess
 
 results/
+dev/config.ini
