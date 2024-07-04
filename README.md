@@ -46,13 +46,3 @@ Then re-install `torchmcubes` by:
 pip uninstall torchmcubes
 pip install git+https://github.com/tatsy/torchmcubes.git
 ```
-
-## Citation
-```BibTeX
-@article{TripoSR2024,
-  title={TripoSR: Fast 3D Object Reconstruction from a Single Image},
-  author={Tochilkin, Dmitry and Pankratz, David and Liu, Zexiang and Huang, Zixuan and and Letts, Adam and Li, Yangguang and Liang, Ding and Laforte, Christian and Jampani, Varun and Cao, Yan-Pei},
-  journal={arXiv preprint arXiv:2403.02151},
-  year={2024}
-}
-```
