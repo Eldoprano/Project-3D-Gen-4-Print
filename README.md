@@ -3,46 +3,59 @@ This project aims to provide a simple and fast way to generate printable 3D mode
 
 It was created using Gradio as a frontend, which makes it easy to change the models used and gives a simple interface to the user.
 
-The models used in the project are:
+## Features
+
+- **Voice to Text**: Convert and translate voice prompts to english text using Whisper Medium.
+- **Text to Image**: Generate 3D styled images from text prompts using Stable Diffusion.
+- **Image to 3D Model**: Convert images to 3D models using TripoSR.
+- **Background Removal**: Remove and resize backgrounds in images.
+- **Mesh Refinement**: Refine generated meshes with PyMeshLab.
+- **3D Model Slicing**: Slice 3D models for printing using PrusaSlicer.
+
+## Models Used
 - Voice to text: [Whisper Medium](https://huggingface.co/openai/whisper-medium)
 - Text to image: [StableDiffusionXL-Base+LORA trained for 3D Style Images](https://huggingface.co/artificialguybr/3DRedmond-V1)
 - Image to 3D: [TripoSR](https://github.com/VAST-AI-Research/TripoSR)
 
-## Getting Started
-### Installation
-- Install Docker
-- Install CUDA 12.3 (We didn't test with other versions)
-- To build the container, run `docker-compose build` (It uses the GPU 0 by default, you can change it in the `docker-compose.yml` file)
-- (For now) To get Prusa Slicer inside the container download and extract https://github.com/prusa3d/PrusaSlicer/releases/download/version_2.7.4/PrusaSlicer-2.7.4+linux-x64-GTK2-202404050940.tar.bz2
-  
-  And add the folder to the path using `export PATH=$PATH:[/path/to/]PrusaSlicer-2.7.4+linux-x64-GTK2-202404050940`\
+---
 
-### Run the gradio app
-- Run `python3 gradio_app.py`
+## Installation
 
-### Manual TripoSR Inference
-```sh
-python run.py examples/chair.png --output-dir output/
-```
-This will save the reconstructed 3D model to `output/`. You can also specify more than one image path separated by spaces. The default options takes about **6GB VRAM** for a single image input.
+### Prerequisites
 
-For detailed usage of this script, use `python run.py --help`.
+- Docker (for containerized setup)
+- CUDA-compatible GPU (if available)
+
+### Steps
+To get the project up and running, you just need to follow these simple steps:
+
+1. **Clone the Repository**:
+    ```bash
+    git clone https://github.com/Eldoprano/Project-3D-Gen-4-Print
+    cd Project-3D-Gen-4-Print
+    ```
+
+2. **Build and start container**:
+
+    - Build the Docker container:
+        ```bash
+        docker-compose build
+        ```
+    - Start the Docker container:
+        ```bash
+        docker-compose up -d
+        ```
+> Note: GPU 0 is used by default. You can change this in the `docker-compose.yml` file.
+---
+
+## Usage
+
+### Running the Gradio Interface
+Once the container is running, it will automatically start the Gradio interface and download all necessary models. You can access the interface by going to: `http://localhost:7890`.
+
+We recommend using Visual Studio Code and it's extension [Remote Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) to open the container if you are having problems with port forwarding.
 
 ## Troubleshooting
-> AttributeError: module 'torchmcubes_module' has no attribute 'mcubes_cuda'
 
-or
-
-> torchmcubes was not compiled with CUDA support, use CPU version instead.
-
-This is because `torchmcubes` is compiled without CUDA support. Please make sure that 
-
-- The locally-installed CUDA major version matches the PyTorch-shipped CUDA major version. For example if you have CUDA 11.x installed, make sure to install PyTorch compiled with CUDA 11.x.
-- `setuptools>=49.6.0`. If not, upgrade by `pip install --upgrade setuptools`.
-
-Then re-install `torchmcubes` by:
-
-```sh
-pip uninstall torchmcubes
-pip install git+https://github.com/tatsy/torchmcubes.git
-```
+### Known Issues
+- Automatic model slicing appears to not be working anymore. Because of this, we recommend manually slicing the models using PrusaSlicer. [This is the version that used to work](https://github.com/prusa3d/PrusaSlicer/releases/download/version_2.7.4/PrusaSlicer-2.7.4+linux-x64-GTK2-202404050940.tar.bz2).
