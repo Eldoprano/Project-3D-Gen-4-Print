@@ -1,6 +1,6 @@
 version: '3.8'
 services:
-  jupyter:
+  img_to_3D_container:
     container_name: img_to_3D_experimente
     build: .  # This line tells Docker Compose to build an image from the Dockerfile in the current directory
     ports:

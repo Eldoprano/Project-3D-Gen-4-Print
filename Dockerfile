@@ -10,6 +10,8 @@ RUN apt update && \
     libxmu-dev \
     libgl1-mesa-glx \
     libgl1-mesa-dri \
+    python3-dev \
+    ninja-build \
     mesa-utils \
     xdg-utils \
     locales \
