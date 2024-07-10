@@ -13,6 +13,6 @@ einops==0.7.0
 transformers==4.35.0
 trimesh==4.0.5
 rembg
-huggingface-hub
+huggingface-hub==0.24.0
 imageio[ffmpeg]
 gradio
