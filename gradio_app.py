@@ -487,5 +487,5 @@ if __name__ == '__main__':
         auth= None,
         share="store_true",
         server_name= None, 
-        server_port= 7866
+        server_port= 7860
     )
