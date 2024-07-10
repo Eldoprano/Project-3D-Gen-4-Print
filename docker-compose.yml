@@ -4,8 +4,7 @@ services:
     container_name: 3D_Gen_4_Print_Container
     build: .  # This line tells Docker Compose to build an image from the Dockerfile in the current directory
     ports:
-      - "8899:8888"
-      - "7899:7860"
+      - "7890:7860"
     volumes:
       - pytorch_vol:/workspace
     environment:

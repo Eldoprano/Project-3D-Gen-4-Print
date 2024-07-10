@@ -26,7 +26,7 @@ RUN pip install -r ./requirements.txt
 RUN pip install git+https://github.com/tatsy/torchmcubes.git
 
 # Make ports available to the world outside this container
-EXPOSE 8888 7860
+EXPOSE 7860
 
 CMD ["python3", "gradio_app.py"]
 
