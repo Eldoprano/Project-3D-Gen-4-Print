@@ -1,24 +1,20 @@
 FROM nvidia/cuda:12.3.2-devel-ubuntu22.04
 WORKDIR /workspace
 
-# Install system packages
-RUN apt update && \
-    apt install -y python3 python3-pip git build-essential prusa-slicer libfuse2 \
-    dbus-x11 \
-    libgtk2.0-dev \
-    libwx-perl \
-    libxmu-dev \
-    libgl1-mesa-glx \
-    libgl1-mesa-dri \
-    python3-dev \
-    ninja-build \
-    mesa-utils \
-    xdg-utils \
-    locales \
-    --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get autoremove -y \
-    && apt-get autoclean
+# Update package lists
+RUN apt update && apt-get autoclean
+ 
+# Install basic packages
+RUN apt install -y python3 python3-pip git build-essential --no-install-recommends
+
+# Install graphical and utility packages
+RUN apt install -y prusa-slicer libfuse2 dbus-x11 libgtk2.0-dev libwx-perl libxmu-dev libgl1-mesa-glx libgl1-mesa-dri mesa-utils xdg-utils locales --no-install-recommends
+
+# Install development tools
+RUN apt install -y python3-dev ninja-build --no-install-recommends
+
+# Cleanup
+RUN rm -rf /var/lib/apt/lists/* && apt-get autoremove -y && apt-get autoclean
 
 # Install pip packages
 RUN pip install --upgrade setuptools
@@ -31,6 +27,8 @@ RUN pip install git+https://github.com/tatsy/torchmcubes.git
 
 # Make ports available to the world outside this container
 EXPOSE 8888 7860
+
+CMD ["python3", "gradio_app.py"]
 
 # For some reason, torchcubes doesn't build with GPU support
 # so, for faster (2X speed) TripoSR, you should attach a terminal to the docker image, and run:

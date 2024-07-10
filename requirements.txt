@@ -5,7 +5,7 @@ torchvision
 torchaudio
 accelerate
 diffusers
-peft
+peft<=0.6.2
 pymeshlab
 omegaconf==2.3.0
 Pillow==10.1.0
