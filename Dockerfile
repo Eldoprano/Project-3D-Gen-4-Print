@@ -8,7 +8,7 @@ RUN apt update && apt-get autoclean
 RUN apt install -y python3 python3-pip git build-essential --no-install-recommends
 
 # Install graphical and utility packages
-RUN apt install -y prusa-slicer libfuse2 dbus-x11 libgtk2.0-dev libwx-perl libxmu-dev libgl1-mesa-glx libgl1-mesa-dri mesa-utils xdg-utils locales --no-install-recommends
+RUN apt install -y prusa-slicer libfuse2 dbus-x11 libgtk2.0-dev libwx-perl libxmu-dev libgl1-mesa-glx libgl1-mesa-dri mesa-utils xdg-utils locales ffmpeg --no-install-recommends
 
 # Install development tools
 RUN apt install -y python3-dev ninja-build --no-install-recommends
