@@ -19,21 +19,16 @@ RUN apt update && \
     && apt-get autoclean
 
 # Install pip packages
-RUN pip install --upgrade setuptools && \
-    pip install jupyter torch torchvision torchaudio accelerate diffusers peft pymeshlab
+RUN pip install --upgrade setuptools
 
-
-# Download and setup TripoSR
-RUN git clone https://github.com/VAST-AI-Research/TripoSR
-WORKDIR /workspace/TripoSR
+# Download and setup the project
+RUN git clone https://github.com/Eldoprano/Project-3D-Gen-4-Print
+WORKDIR /workspace/Project-3D-Gen-4-Print
 RUN pip install -r ./requirements.txt
+RUN pip install git+https://github.com/tatsy/torchmcubes.git
 
 # Make ports available to the world outside this container
 EXPOSE 8888 7860
-
-# Run Jupyter Notebook when the container launches
-WORKDIR /workspace
-CMD ["jupyter", "notebook", "--ip='*'", "--port=8888", "--no-browser", "--allow-root"]
 
 # For some reason, torchcubes doesn't build with GPU support
 # so, for faster (2X speed) TripoSR, you should attach a terminal to the docker image, and run:
