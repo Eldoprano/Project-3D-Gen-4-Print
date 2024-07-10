@@ -55,7 +55,14 @@ Once the container is running, it will automatically start the Gradio interface 
 
 We recommend using Visual Studio Code and it's extension [Remote Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) to open the container if you are having problems with port forwarding.
 
-## Troubleshooting
+![Gradio Interface](model_outputs/gradio_interface.png)
 
-### Known Issues
+# Interesting projects in 3D Generation
+- [Unique3D](https://wukailu.github.io/Unique3D/): This is model that can generate 3D models with more details using a single image.
+- [Human Gaussian Model *](https://jinnan-chen.github.io/projects/HGM/): This model specializes in generating good 3D models of full human bodies from a single image.
+- [MeshXL *](https://meshxl.github.io/): This model can generate high quality 3D meshes from a text prompt or image.
+
+*These models are not yet publicly available at the time of writing.
+
+## Known Issues
 - Automatic model slicing appears to not be working anymore. Because of this, we recommend manually slicing the models using PrusaSlicer. [This is the version that used to work](https://github.com/prusa3d/PrusaSlicer/releases/download/version_2.7.4/PrusaSlicer-2.7.4+linux-x64-GTK2-202404050940.tar.bz2).
